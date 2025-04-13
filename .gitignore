@@ -1,0 +1,15 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.vs/
+.vs/
+_ReSharper*/
+packages/
+*.nupkg
+
+## Node.js
+node_modules/
+npm-debug.log
+.env

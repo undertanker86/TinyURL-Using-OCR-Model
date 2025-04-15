@@ -64,7 +64,7 @@ namespace UrlShortener.Controllers
 
 
 
-        //[Authorize]
+        [Authorize]
         [HttpPost]
         [Route("shorten")]
         public async Task<ActionResult<UrlResponse>> ShortenUrl([FromBody] CreateUrlRequest request)
@@ -112,7 +112,7 @@ namespace UrlShortener.Controllers
         }
 
         [HttpGet]
-        //[Authorize]
+        [Authorize]
         [Route("list")]
         public async Task<ActionResult<IEnumerable<UrlResponse>>> GetUserUrls()
         {

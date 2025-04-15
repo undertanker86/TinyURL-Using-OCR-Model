@@ -25,18 +25,6 @@
             "UpstreamHttpMethod": [ "Get" ]
         },
         {
-            "DownstreamPathTemplate": "/qr/{shortUrl}",
-            "DownstreamScheme": "http",
-            "DownstreamHostAndPorts": [
-                {
-                    "Host": "localhost",
-                    "Port": 5005
-                }
-            ],
-            "UpstreamPathTemplate": "/qr/{shortUrl}",
-            "UpstreamHttpMethod": [ "Get" ]
-        },
-        {
             "DownstreamPathTemplate": "/swagger/{everything}",
             "DownstreamScheme": "http",
             "DownstreamHostAndPorts": [

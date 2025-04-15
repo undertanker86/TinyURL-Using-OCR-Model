@@ -1,6 +1,7 @@
 ﻿// Startup.cs
 using System;
 using System.Text;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -39,7 +40,11 @@ namespace UrlShortener
                 return new UrlShortenerService(dbContext, baseUrl);
             });
 
+            // Thêm ExpiredUrlCleanupService
             services.AddHostedService<ExpiredUrlCleanupService>();
+
+            // Thêm HttpClient
+            services.AddHttpClient();
 
             // Cấu hình CORS
             services.AddCors(options =>
@@ -52,25 +57,9 @@ namespace UrlShortener
                 });
             });
 
-            // Cấu hình Authentication
-            services.AddAuthentication(options =>
-            {
-                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-            })
-            .AddJwtBearer(options =>
-            {
-                options.TokenValidationParameters = new TokenValidationParameters
-                {
-                    ValidateIssuer = true,
-                    ValidateAudience = true,
-                    ValidateLifetime = true,
-                    ValidateIssuerSigningKey = true,
-                    ValidIssuer = Configuration["JwtSettings:Issuer"],
-                    ValidAudience = Configuration["JwtSettings:Audience"],
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Configuration["JwtSettings:Key"]))
-                };
-            });
+            // Cấu hình Authentication với custom handler
+            services.AddAuthentication("NodeJs")
+                .AddScheme<AuthenticationSchemeOptions, NodeJsAuthenticationHandler>("NodeJs", null);
 
             services.AddControllers();
 
@@ -90,22 +79,21 @@ namespace UrlShortener
                 });
 
                 c.AddSecurityRequirement(new OpenApiSecurityRequirement
+        {
+            {
+                new OpenApiSecurityScheme
                 {
+                    Reference = new OpenApiReference
                     {
-                        new OpenApiSecurityScheme
-                        {
-                            Reference = new OpenApiReference
-                            {
-                                Type = ReferenceType.SecurityScheme,
-                                Id = "Bearer"
-                            }
-                        },
-                        Array.Empty<string>()
+                        Type = ReferenceType.SecurityScheme,
+                        Id = "Bearer"
                     }
-                });
+                },
+                Array.Empty<string>()
+            }
+        });
             });
         }
-
         // Phương thức này được gọi bởi runtime. Dùng để cấu hình HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {

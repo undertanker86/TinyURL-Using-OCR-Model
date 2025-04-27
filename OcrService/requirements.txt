@@ -1,0 +1,14 @@
+fastapi==0.96.0
+uvicorn[standard]==0.22.0
+easyocr==1.7.0
+Pillow==9.5.0
+loguru==0.7.0
+python-multipart==0.0.6 # Cần cho FastAPI File Uploads
+imagehash==4.3.1
+numpy==1.23.1 # EasyOCR có thể cần version cụ thể, kiểm tra lại nếu có lỗi
+httpx==0.23.3 # Hoặc version mới hơn
+validators==0.20.0 # Hoặc version mới hơn
+
+# Thêm các dependencies khác nếu cần
+# torch # EasyOCR sẽ tự cài nếu cần và download_enabled=True
+# torchvision

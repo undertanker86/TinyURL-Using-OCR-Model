@@ -34,7 +34,7 @@ namespace UrlShortener.Services
                 var existingUrl = await _context.InfURL.FirstOrDefaultAsync(u => u.NewUrl == customAlias);
                 if (existingUrl != null)
                 {
-                    throw new InvalidOperationException("Custom alias này đã được sử dụng. Vui lòng chọn alias khác.");
+                    throw new InvalidOperationException("This custom alias is already in use. Please choose another alias.");
                 }
                 shortUrl = customAlias;
             }

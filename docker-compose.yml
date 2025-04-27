@@ -1,0 +1,142 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2017-latest
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=YourStrong!Passw0rd
+      - MSSQL_PID=Express
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    command: /opt/mssql/bin/sqlservr
+    healthcheck:
+      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "YourStrong!Passw0rd" -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    networks:
+      - url-shortener-network
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - url-shortener-network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - url-shortener-network
+
+  nodejs-auth:
+    build:
+      context: C:/Users/ptaho/auth-api
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - JWT_SECRET=duongtha-Aa@
+      - JWT_EXPIRES_IN=2m
+      - JWT_REFRESH_SECRET=duong@123456
+      - JWT_REFRESH_EXPIRES_IN=7d
+      - DB_CONFIG_USER=sa
+      - DB_CONFIG_PASSWORD=YourStrong!Passw0rd
+      - DB_CONFIG_SERVER=sqlserver
+      - DB_CONFIG_DATABASE=TinyURLDB
+      - DB_CONFIG_ENCRYPT=false
+      - DB_CONFIG_TRUST_SERVER_CERTIFICATE=true
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    networks:
+      - url-shortener-network
+
+  url-shortener:
+    build:
+      context: .
+      dockerfile: UrlShortener/Dockerfile
+    ports:
+      - "5005:80"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=TinyURLDB;User=sa;Password=YourStrong!Passw0rd;MultipleActiveResultSets=true
+      - AppSettings__BaseUrl=http://localhost:5005
+      - AuthServiceUrl=http://nodejs-auth:3000
+      - Redis__ConnectionString=redis:6379
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__Port=5672
+      - RabbitMQ__Username=guest
+      - RabbitMQ__Password=guest
+      - RabbitMQ__ClicksQueue=url_clicks
+      - RabbitMQ__Enabled=true
+    networks:
+      - url-shortener-network
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: ApiGateway/Dockerfile
+    ports:
+      - "5006:80"
+    depends_on:
+      - url-shortener
+      - nodejs-auth
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - AuthServiceUrl=http://nodejs-auth:3000
+    networks:
+      - url-shortener-network
+
+  ocr-service:
+    build:
+      context: .
+      dockerfile: OcrService/Dockerfile
+    ports:
+      - "8001:8000"
+    environment:
+      - URL_SHORTENER_SERVICE_URL=http://api-gateway:80
+    volumes:
+      - ./my_model:/app/my_model
+    networks:
+      - url-shortener-network
+
+volumes:
+  sqlserver_data:
+  redis_data:
+  rabbitmq_data:
+
+networks:
+  url-shortener-network:
+    driver: bridge

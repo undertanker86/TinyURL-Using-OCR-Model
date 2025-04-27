@@ -1,5 +1,4 @@
-﻿// Startup.cs
-using System;
+﻿using System;
 using System.Text;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -11,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using StackExchange.Redis;
 using UrlShortener.Data;
 using UrlShortener.Services;
 
@@ -25,14 +25,11 @@ namespace UrlShortener
 
         public IConfiguration Configuration { get; }
 
-        // Phương thức này được gọi bởi runtime. Dùng để thêm services vào container.
         public void ConfigureServices(IServiceCollection services)
         {
-            // Thêm DbContext vào DI container
             services.AddDbContext<AppDbContext>(options =>
                 options.UseSqlServer(Configuration.GetConnectionString("DefaultConnection")));
 
-            // Thêm URL Shortener Service
             services.AddScoped<IUrlShortenerService>(provider =>
             {
                 var dbContext = provider.GetRequiredService<AppDbContext>();
@@ -40,35 +37,37 @@ namespace UrlShortener
                 return new UrlShortenerService(dbContext, baseUrl);
             });
 
-            // Thêm ExpiredUrlCleanupService
+            // ✅ Redis service DI
+            services.AddSingleton<IConnectionMultiplexer>(sp => {
+                var redisConnection = Configuration["Redis:ConnectionString"] ?? "localhost:6379";
+                return ConnectionMultiplexer.Connect(redisConnection);
+            });
+            services.AddScoped<IQrCodeCacheService, QrCodeCacheService>(); // <-- quan trọng!
+
             services.AddHostedService<ExpiredUrlCleanupService>();
-
-            // Thêm HttpClient
             services.AddHttpClient();
+            // Add RabbitMQ service
+            services.AddSingleton<IRabbitMQService, RabbitMQService>();
 
-            // Cấu hình CORS
+            // Add click processor as a hosted service
+            services.AddHostedService<ClickProcessorService>();
             services.AddCors(options =>
             {
                 options.AddPolicy("AllowAll", builder =>
                 {
-                    builder.AllowAnyOrigin()
-                        .AllowAnyMethod()
-                        .AllowAnyHeader();
+                    builder.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
                 });
             });
 
-            // Cấu hình Authentication với custom handler
             services.AddAuthentication("NodeJs")
                 .AddScheme<AuthenticationSchemeOptions, NodeJsAuthenticationHandler>("NodeJs", null);
 
             services.AddControllers();
 
-            // Cấu hình Swagger
             services.AddSwaggerGen(c =>
             {
                 c.SwaggerDoc("v1", new OpenApiInfo { Title = "URL Shortener API", Version = "v1" });
 
-                // Thêm JWT Authentication vào Swagger
                 c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
                 {
                     Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
@@ -94,7 +93,8 @@ namespace UrlShortener
         });
             });
         }
-        // Phương thức này được gọi bởi runtime. Dùng để cấu hình HTTP request pipeline.
+
+
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
             if (env.IsDevelopment())
@@ -104,12 +104,12 @@ namespace UrlShortener
                 app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "URL Shortener API v1"));
             }
 
-            app.UseHttpsRedirection();
+            // Add CORS before routing
+            app.UseCors("AllowAll");
 
             app.UseRouting();
 
-            app.UseCors("AllowAll");
-
+            // Important: UseAuthentication must come before UseAuthorization
             app.UseAuthentication();
             app.UseAuthorization();
 

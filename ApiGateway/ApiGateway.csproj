@@ -1,12 +1,25 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <PropertyGroup>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>netcoreapp3.1</TargetFramework>
+		<UserSecretsId>90359f45-c6bf-4d1b-9d86-8bc427a0c215</UserSecretsId>
+		<DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Ocelot" Version="16.0.0" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="Docker.DotNet" Version="3.125.15" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="6.0.0" />
+		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.21.0" />
+		<PackageReference Include="Ocelot" Version="16.0.0" />
+		<PackageReference Include="RabbitMQ.Client" Version="6.5.0" />
+		<PackageReference Include="StackExchange.Redis" Version="2.8.31" />
+	</ItemGroup>
 
+	<ItemGroup>
+		<!-- Copy ocelot.json mỗi lần build/run để Ocelot load được config -->
+		<None Update="ocelot.json">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
 
 </Project>

@@ -1,43 +1,164 @@
 {
-    "Routes": [
+  "Routes": [
+    // --- Routes hiện có cho UrlShortener ---
+    {
+      "DownstreamPathTemplate": "/",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
         {
-            "DownstreamPathTemplate": "/api/url/{everything}",
-            "DownstreamScheme": "http",
-            "DownstreamHostAndPorts": [
-                {
-                    "Host": "localhost",
-                    "Port": 5005
-                }
-            ],
-            "UpstreamPathTemplate": "/api/url/{everything}",
-            "UpstreamHttpMethod": [ "Get", "Post", "Put", "Delete" ]
-        },
-        {
-            "DownstreamPathTemplate": "/{shortUrl}",
-            "DownstreamScheme": "http",
-            "DownstreamHostAndPorts": [
-                {
-                    "Host": "localhost",
-                    "Port": 5005
-                }
-            ],
-            "UpstreamPathTemplate": "/{shortUrl}",
-            "UpstreamHttpMethod": [ "Get" ]
-        },
-        {
-            "DownstreamPathTemplate": "/swagger/{everything}",
-            "DownstreamScheme": "http",
-            "DownstreamHostAndPorts": [
-                {
-                    "Host": "localhost",
-                    "Port": 5005
-                }
-            ],
-            "UpstreamPathTemplate": "/swagger/{everything}",
-            "UpstreamHttpMethod": [ "Get" ]
+          "Host": "url-shortener", // Tên service trong docker-compose
+          "Port": 80 // Cổng nội bộ của UrlShortener
         }
-    ],
-    "GlobalConfiguration": {
-        "BaseUrl": "http://localhost:5006"
+      ],
+      "UpstreamPathTemplate": "/", // Route gốc cho chuyển hướng
+      "UpstreamHttpMethod": [ "GET" ]
+    },
+    {
+      "DownstreamPathTemplate": "/api/url/shorten",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "url-shortener",
+          "Port": 80
+        }
+      ],
+      "UpstreamPathTemplate": "/api/url/shorten", // Route tạo URL rút gọn
+      "UpstreamHttpMethod": [ "POST", "OPTIONS" ],
+      "AddHeadersToRequest": { // Chuyển tiếp header xác thực
+        "Authorization": "{Authorization}"
+      }
+    },
+    {
+      "DownstreamPathTemplate": "/api/url/list",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "url-shortener",
+          "Port": 80
+        }
+      ],
+      "UpstreamPathTemplate": "/api/url/list", // Route lấy danh sách URL
+      "UpstreamHttpMethod": [ "GET", "OPTIONS" ],
+      "AddHeadersToRequest": {
+        "Authorization": "{Authorization}"
+      }
+    },
+    {
+      "DownstreamPathTemplate": "/api/url/{shortUrl}/qr",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "url-shortener",
+          "Port": 80
+        }
+      ],
+      "UpstreamPathTemplate": "/api/url/{shortUrl}/qr", // Route lấy/lưu QR code
+      "UpstreamHttpMethod": [ "GET", "POST", "OPTIONS" ],
+      "AddHeadersToRequest": {
+        "Authorization": "{Authorization}"
+      }
+    },
+    {
+      "DownstreamPathTemplate": "/api/url/{shortUrl}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "url-shortener",
+          "Port": 80
+        }
+      ],
+      "UpstreamPathTemplate": "/api/url/{shortUrl}", // Route xóa URL
+      "UpstreamHttpMethod": [ "DELETE", "OPTIONS" ],
+      "AddHeadersToRequest": {
+        "Authorization": "{Authorization}"
+      }
+    },
+    // --- Routes hiện có cho NodeJS Auth Service ---
+    {
+      "DownstreamPathTemplate": "/api/auth/{everything}", // Bắt tất cả các route con của /api/auth
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "nodejs-auth", // Tên service trong docker-compose
+          "Port": 3000 // Cổng nội bộ của NodeJS Auth
+        }
+      ],
+      "UpstreamPathTemplate": "/api/auth/{everything}",
+      "UpstreamHttpMethod": [ "GET", "POST", "OPTIONS" ],
+      "AddHeadersToRequest": { // Chuyển tiếp header xác thực (cần thiết cho các route như /me, /logout)
+        "Authorization": "{Authorization}"
+      }
+    },
+    // Route này có thể bị trùng lặp bởi route {everything} ở trên nếu không đặt cẩn thận
+    // hoặc nếu bạn muốn cấu hình riêng cho /validate. Route {everything} thường nên đặt cuối cùng.
+    // Tuy nhiên, theo cấu hình bạn cung cấp, tôi giữ lại nó.
+    {
+      "DownstreamPathTemplate": "/api/auth/validate", // Route validate token trong NodeJS Auth
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "nodejs-auth",
+          "Port": 3000
+        }
+      ],
+      "UpstreamPathTemplate": "/api/auth/validate", // UrlShortener sẽ gọi endpoint này qua Gateway
+      "UpstreamHttpMethod": [ "GET", "OPTIONS" ],
+      "AddHeadersToRequest": {
+        "Authorization": "{Authorization}"
+      }
+    },
+
+    // --- Routes MỚI cho OCR Service ---
+    {
+      "DownstreamPathTemplate": "/api/ocr/upload", // Đường dẫn mà ocr-service lắng nghe
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "ocr-service", // Tên dịch vụ OCR trong docker-compose
+          "Port": 8000 // Cổng nội bộ của OCR Service
+        }
+      ],
+      "UpstreamPathTemplate": "/api/ocr/upload", // Đường dẫn mà client sẽ gọi đến Gateway
+      "UpstreamHttpMethod": [ "POST", "OPTIONS" ],
+      // Ocelot không cần xác thực ở đây, nhưng cần chuyển tiếp header
+      // để dịch vụ OCR có thể dùng nó gọi sang UrlShortener
+      "AddHeadersToRequest": {
+        "Authorization": "{Authorization}"
+      },
+      // Tăng timeout và giới hạn kích thước request nếu cần cho việc upload ảnh và xử lý OCR
+      "QoSOptions": {
+        "TimeoutValue": 60000 // 60 giây
+      },
+      // Cấu hình để cho phép request body lớn hơn (nếu cần)
+      // Giới hạn này cũng cần được thiết lập ở Kestrel của Gateway (Program.cs)
+      "LoadBalancerOptions": {
+        "Type": "LeastConnection",
+        "Key": null,
+        "Expiry": 0
+      }
+      // Bạn có thể thêm các cấu hình khác như RateLimitOptions nếu muốn
+    },
+    // (Tùy chọn) Route cho health check của ocr-service
+    {
+      "DownstreamPathTemplate": "/health",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "ocr-service",
+          "Port": 8000
+        }
+      ],
+      "UpstreamPathTemplate": "/api/ocr/health",
+      "UpstreamHttpMethod": [ "GET" ]
     }
+  ],
+  "GlobalConfiguration": {
+    // BaseUrl là địa chỉ mà Gateway lắng nghe từ bên ngoài (khi chạy local)
+    "BaseUrl": "http://localhost:5006",
+    "RequestIdKey": "OcRequestId"
+    // Thêm cấu hình giới hạn request body chung nếu cần
+    // "HttpServerOptions": {
+    //   "MaxRequestBodySize": 20971520 // 20MB
+    // }
+  }
 }

@@ -26,63 +26,97 @@ namespace UrlShortener.Services
             : base(options, logger, encoder, clock)
         {
             _httpClientFactory = httpClientFactory;
-            _authServiceUrl = configuration["AuthServiceUrl"] ?? "http://localhost:3000";
+            _authServiceUrl = configuration["AuthServiceUrl"] ?? "http://localhost:5006";
+            Logger.LogInformation($"NodeJsAuthenticationHandler initialized with AuthServiceUrl: {_authServiceUrl}");
         }
 
         protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
         {
-            // Kiểm tra xem request có authorization header không
-            if (!Request.Headers.ContainsKey("Authorization"))
-            {
-                return AuthenticateResult.Fail("Authorization header không tồn tại");
-            }
-
-            var authHeader = Request.Headers["Authorization"].ToString();
-
             try
             {
-                var client = _httpClientFactory.CreateClient();
-                client.DefaultRequestHeaders.Add("Authorization", authHeader);
-
-                // Gọi API của NodeJS để xác thực token
-                var response = await client.GetAsync($"{_authServiceUrl}/api/auth/validate");
-
-                if (!response.IsSuccessStatusCode)
+                // Check if Authorization header exists
+                if (!Request.Headers.ContainsKey("Authorization"))
                 {
-                    return AuthenticateResult.Fail("Token không hợp lệ");
+                    Logger.LogWarning("Authorization header missing");
+                    return AuthenticateResult.Fail("Authorization header missing");
                 }
 
-                var content = await response.Content.ReadAsStringAsync();
-                var result = JsonSerializer.Deserialize<AuthResponse>(content, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
+                var authHeader = Request.Headers["Authorization"].ToString();
+                Logger.LogInformation($"Authorization header received: {authHeader.Substring(0, Math.Min(20, authHeader.Length))}...");
 
-                if (result?.Data?.User == null)
+                // Check if it's a Bearer token
+                if (!authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
                 {
-                    return AuthenticateResult.Fail("Không thể lấy thông tin người dùng");
+                    Logger.LogWarning("Invalid Authorization header format");
+                    return AuthenticateResult.Fail("Invalid Authorization header format");
                 }
 
-                var user = result.Data.User;
-
-                // Tạo claims từ thông tin user
-                var claims = new[]
+                try
                 {
-                    new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                    new Claim(ClaimTypes.Name, user.Id.ToString()),
-                    new Claim(ClaimTypes.Email, user.Email)
-                };
+                    // Create HTTP client and add Authorization header
+                    var client = _httpClientFactory.CreateClient();
+                    client.DefaultRequestHeaders.Add("Authorization", authHeader);
 
-                var identity = new ClaimsIdentity(claims, Scheme.Name);
-                var principal = new ClaimsPrincipal(identity);
-                var ticket = new AuthenticationTicket(principal, Scheme.Name);
+                    // Call validation endpoint through the API Gateway
+                    var validateUrl = $"{_authServiceUrl}/api/auth/validate";
+                    Logger.LogInformation($"Calling validation endpoint: {validateUrl}");
 
-                return AuthenticateResult.Success(ticket);
+                    var response = await client.GetAsync(validateUrl);
+                    var responseContent = await response.Content.ReadAsStringAsync();
+
+                    Logger.LogInformation($"Validation response: Status={response.StatusCode}, Content={responseContent}");
+
+                    // Check if validation was successful
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        Logger.LogWarning($"Token validation failed: {response.StatusCode}");
+                        return AuthenticateResult.Fail($"Token validation failed: {response.StatusCode}");
+                    }
+
+                    // Parse the response
+                    var result = JsonSerializer.Deserialize<AuthResponse>(responseContent, new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+
+                    if (result?.Status != "success" || result?.Data?.User == null)
+                    {
+                        Logger.LogWarning("Invalid response format from validation endpoint");
+                        return AuthenticateResult.Fail("Invalid response format from validation endpoint");
+                    }
+
+                    var user = result.Data.User;
+                    Logger.LogInformation($"User authenticated: ID={user.Id}, Email={user.Email}");
+
+                    // Create claims for the authenticated user
+                    var claims = new[]
+                    {
+                        new Claim(ClaimTypes.NameIdentifier, user.Id),
+                        new Claim(ClaimTypes.Name, user.Id),
+                        new Claim(ClaimTypes.Email, user.Email)
+                    };
+
+                    var identity = new ClaimsIdentity(claims, Scheme.Name);
+                    var principal = new ClaimsPrincipal(identity);
+                    var ticket = new AuthenticationTicket(principal, Scheme.Name);
+
+                    return AuthenticateResult.Success(ticket);
+                }
+                catch (HttpRequestException httpEx)
+                {
+                    Logger.LogError(httpEx, $"HTTP error during token validation: {httpEx.Message}");
+                    return AuthenticateResult.Fail($"Token validation service error: {httpEx.Message}");
+                }
+                catch (JsonException jsonEx)
+                {
+                    Logger.LogError(jsonEx, "Error parsing validation response");
+                    return AuthenticateResult.Fail("Error parsing validation response");
+                }
             }
             catch (Exception ex)
             {
-                Logger.LogError(ex, "Lỗi khi xác thực token");
-                return AuthenticateResult.Fail("Lỗi xác thực: " + ex.Message);
+                Logger.LogError(ex, $"Authentication error: {ex.Message}");
+                return AuthenticateResult.Fail($"Authentication error: {ex.Message}");
             }
         }
 
